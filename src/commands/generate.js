@@ -1,17 +1,16 @@
 import { logger } from '../util/logging.js';
-import { 
-    createOrCleanDir, 
+import {
+    createOrCleanDir,
     removeProviderIndexFile,
-    createDir, 
-    writeFile 
+    createDir,
+    writeFile
 } from '../util/filesystem.js';
-import { 
+import {
     getCurrentDate,
-    populateSecuritySchemes, 
-    replaceSchemaRefs, 
-    processParameters, 
+    populateSecuritySchemes,
+    replaceSchemaRefs,
+    processParameters,
     populatePaths,
-    generateStackQLResources,
 } from '../helper/functions.js';
 import * as path from 'path';
 import fetch from 'node-fetch';
@@ -27,16 +26,11 @@ const rootDiscoveryUrl = {
 };
 
 const baseOpenApiDoc = {
-    openapi: '3.1.0', 
+    openapi: '3.1.0',
     info: {
-        contact: {
-            name: 'StackQL Studios',
-            url: 'https://github.com/stackql/google-discovery-to-openapi',
-            email: 'info@stackql.io'
-        },
-    }, 
-    externalDocs: {}, 
-    servers: [], 
+    },
+    externalDocs: {},
+    servers: [],
     components: {},
     paths: {}
 };
@@ -65,16 +59,16 @@ async function generateProviderIndex(provider, servicesDir, providerDir, configO
     const files = fs.readdirSync(servicesDir);
 
     for (const file of files) {
-        try {			
+        try {
             debug ? logger.debug(`processing: ${file}`) : null;
             if (path.extname(file) === '.yaml') {
                 const filePath = path.join(servicesDir, file);
                 const fileContent = fs.readFileSync(filePath, 'utf8');
                 const apiSpec = yaml.load(fileContent);
-    
+
                 const serviceName = path.basename(file, '.yaml');
                 const info = apiSpec.info;
-    
+
                 providerServices[serviceName] = {
                     id: `${serviceName}:${version}`,
                     name: serviceName,
@@ -117,7 +111,7 @@ async function generateProviderIndex(provider, servicesDir, providerDir, configO
 *  service processing function
 */
 
-async function processService(provider, serviceName, serviceData, serviceDir, debug){
+async function processService(provider, serviceName, serviceData, serviceDir, debug) {
     try {
 
         // init openapi doc
@@ -128,7 +122,7 @@ async function processService(provider, serviceName, serviceData, serviceDir, de
         openApiDoc['info']['title'] = serviceData.title;
         openApiDoc['info']['description'] = serviceData.description;
         openApiDoc['info']['version'] = serviceData.version;
-        openApiDoc['info']['x-discovery-doc-revision'] = serviceData.revision; 
+        openApiDoc['info']['x-discovery-doc-revision'] = serviceData.revision;
         openApiDoc['info']['x-generated-date'] = getCurrentDate();
 
         // populate external docs
@@ -138,20 +132,20 @@ async function processService(provider, serviceName, serviceData, serviceDir, de
         // populate servers
         debug ? logger.debug('populating servers..') : null;
         let serverUrl = `${serviceData.rootUrl}${serviceData.servicePath}`;
-        if(serverUrl.endsWith('/')){
+        if (serverUrl.endsWith('/')) {
             serverUrl = serverUrl.slice(0, -1);
         }
         openApiDoc['servers'] = [];
-        openApiDoc['servers'].push({'url': serverUrl});        
-        
+        openApiDoc['servers'].push({ 'url': serverUrl });
+
         // populate securitySchemes
         debug ? logger.debug('populating securitySchemes..') : null;
-        
-        if(serviceData.auth){
+
+        if (serviceData.auth) {
             openApiDoc['components']['securitySchemes'] = populateSecuritySchemes(serviceData.auth);
             // console.log(serviceData.auth);
         }
-    
+
         // populate schemas
         debug ? logger.debug('populating schemas..') : null;
         openApiDoc['components']['schemas'] = replaceSchemaRefs(serviceData.schemas);
@@ -159,7 +153,7 @@ async function processService(provider, serviceName, serviceData, serviceDir, de
         // populate parameters
         debug ? logger.debug('populating parameters..') : null;
         let paramRefList = [];
-        if(serviceData.parameters){
+        if (serviceData.parameters) {
             const [paramsObj, retParamsRefList] = processParameters(serviceData.parameters);
             paramRefList = retParamsRefList;
             openApiDoc['components']['parameters'] = paramsObj;
@@ -168,10 +162,6 @@ async function processService(provider, serviceName, serviceData, serviceDir, de
         // populate paths (most of the action happens here)
         debug ? logger.debug('populating paths..') : null;
         openApiDoc['paths'] = populatePaths({}, serviceData.resources, paramRefList, debug);
-
-        // add stackql resources
-        debug ? logger.debug('adding stackQL resources...') : null;
-        openApiDoc = generateStackQLResources(provider, openApiDoc, serviceName, debug);
 
         // remove problematic operations
         debug ? logger.debug('removing problem paths..') : null;
@@ -184,8 +174,12 @@ async function processService(provider, serviceName, serviceData, serviceDir, de
         });
 
         // write out openapi doc as yaml
-        const openApiDocYaml = yaml.dump(openApiDoc);
-        await writeFile(path.join(serviceDir, `${serviceName}.yaml`), openApiDocYaml, debug);
+        // const openApiDocYaml = yaml.dump(openApiDoc);
+        // await writeFile(path.join(serviceDir, `${serviceName}.yaml`), openApiDocYaml, debug);
+
+        // write out openapi as json
+        const jsonstr = JSON.stringify(openApiDoc, null, 2);
+        await writeFile(path.join(serviceDir, `${serviceName}.json`), jsonstr, debug);
 
         return
     } catch (err) {
@@ -203,20 +197,20 @@ export async function generateSpecs(options, rootDir) {
     const preferred = options.preferred;
     let outputDir = options.output;
     const provider = options.provider;
-    
+
     const requiredGCPScope = 'https://www.googleapis.com/auth/cloud-platform';
 
     // make sure provider is one of 'googleapis.com', 'firebase', or 'googleadmin'
-    if(provider !== 'googleapis.com' && provider !== 'firebase' && provider !== 'googleadmin'){
+    if (provider !== 'googleapis.com' && provider !== 'firebase' && provider !== 'googleadmin') {
         logger.error('invalid service specified, exiting...');
         return;
     }
 
     logger.info(`generate called for ${provider}...`);
-    debug ? logger.debug({rootDir: rootDir, ...options}) : null;
+    debug ? logger.debug({ rootDir: rootDir, ...options }) : null;
 
     // get output directory
-    if(outputDir.startsWith('/') || outputDir.startsWith('C:\\')){
+    if (outputDir.startsWith('/') || outputDir.startsWith('C:\\')) {
         debug ? logger.debug('absolute path supplied for output directory') : null;
     } else {
         outputDir = path.join(rootDir, outputDir, 'src');
@@ -224,20 +218,20 @@ export async function generateSpecs(options, rootDir) {
     logger.info(`output directory: ${outputDir}`);
 
     // create spec directory
-    const providerDir = path.join(outputDir, provider, 'v00.00.00000'); 
+    const providerDir = path.join(outputDir, provider, 'v00.00.00000');
     let servicesDir = path.join(providerDir, 'services');
-    if(!preferred && provider != 'googleadmin'){
+    if (!preferred && provider != 'googleadmin') {
         servicesDir = path.join(outputDir, provider == 'googleapis.com' ? 'google_beta' : `${provider}_beta`, 'v00.00.00000', 'services');
     }
     createOrCleanDir(servicesDir, debug);
     removeProviderIndexFile(providerDir, debug);
-    
+
     // get root discovery document
     logger.info('Getting root discovery document...');
     const rootResp = await fetch(rootDiscoveryUrl[provider]);
     const rootData = await rootResp.json();
 
-    if(provider != 'googleadmin'){
+    if (provider != 'googleadmin') {
         //
         // only for googleapis.com and firebase
         //
@@ -253,7 +247,7 @@ export async function generateSpecs(options, rootDir) {
                 icons: {
                     x16: "http://www.google.com/images/icons/product/search-32.gif",
                     x32: "http://www.google.com/images/icons/product/search-16.gif"
-                  },
+                },
                 documentationLink: "https://cloud.google.com/marketplace/docs/partners/",
                 preferred: true
             },
@@ -265,13 +259,13 @@ export async function generateSpecs(options, rootDir) {
                 description: "Manages identity and access control for Google Cloud resources, including the creation of service accounts, which you can use to authenticate to Google and make API calls. Enabling this API also enables the IAM Service Account Credentials API (iamcredentials.googleapis.com). However, disabling this API doesn't disable the IAM Service Account Credentials API.",
                 discoveryRestUrl: "https://iam.googleapis.com/$discovery/rest?version=v2beta",
                 icons: {
-                  x16: "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
-                  x32: "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+                    x16: "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+                    x32: "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
                 },
                 documentationLink: "https://cloud.google.com/iam/",
                 preferred: false
-              },
-              {
+            },
+            {
                 id: "iam:v1",
                 name: "iam",
                 version: "v1",
@@ -279,13 +273,13 @@ export async function generateSpecs(options, rootDir) {
                 description: "Manages identity and access control for Google Cloud resources, including the creation of service accounts, which you can use to authenticate to Google and make API calls. Enabling this API also enables the IAM Service Account Credentials API (iamcredentials.googleapis.com). However, disabling this API doesn't disable the IAM Service Account Credentials API.",
                 discoveryRestUrl: "https://iam.googleapis.com/$discovery/rest?version=v1",
                 icons: {
-                  x16: "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
-                  x32: "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+                    x16: "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+                    x32: "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
                 },
                 documentationLink: "https://cloud.google.com/iam/",
                 preferred: false
-              },
-              {
+            },
+            {
                 id: "iam:v2",
                 name: "iamv2",
                 version: "v2",
@@ -293,20 +287,20 @@ export async function generateSpecs(options, rootDir) {
                 description: "Manages identity and access control for Google Cloud resources, including the creation of service accounts, which you can use to authenticate to Google and make API calls. Enabling this API also enables the IAM Service Account Credentials API (iamcredentials.googleapis.com). However, disabling this API doesn't disable the IAM Service Account Credentials API.",
                 discoveryRestUrl: "https://iam.googleapis.com/$discovery/rest?version=v2",
                 icons: {
-                  x16: "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
-                  x32: "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+                    x16: "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+                    x32: "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
                 },
                 documentationLink: "https://cloud.google.com/iam/",
                 preferred: true
-              },            
+            },
         ];
-        
+
         const excludedServices = ["iam"];
 
         // filter services by preferred
         let services = [];
-        if(preferred){
-            services = rootData.items.filter(item => 
+        if (preferred) {
+            services = rootData.items.filter(item =>
                 item.preferred === true && !excludedServices.includes(item.name)
             );
             services = services.concat(additionalServiceData);
@@ -316,7 +310,7 @@ export async function generateSpecs(options, rootDir) {
             betaServices = rootData.items;
             betaServices.forEach(service => {
                 // if service.id does not contain the words beta or alpha, delete the service
-                if(service.id.includes('beta') || service.id.includes('alpha')){
+                if (service.id.includes('beta') || service.id.includes('alpha')) {
                     service.name = service.id.replace(':', '_');
                     services.push(service);
                 }
@@ -325,7 +319,7 @@ export async function generateSpecs(options, rootDir) {
 
         logger.info(`processing: ${services.length} services...`);
         debug ? logger.debug(`services to be processed:`) : null;
-        if(debug){
+        if (debug) {
             services.forEach(service => {
                 logger.debug(service.name);
             });
@@ -334,8 +328,8 @@ export async function generateSpecs(options, rootDir) {
 
         // get document for each service, check if oauth2.scopes includes a key named "https://www.googleapis.com/auth/cloud-platform"
         logger.info('Checking OAuth scopes...');
-        for(let service of services){
-            try {       
+        for (let service of services) {
+            try {
                 logger.info(`checking ${service.name}...`);
 
                 // if(service.name != 'serviceusage' && service.name != 'iam' && service.name != 'iamv2' && service.name != 'iamv2beta'){
@@ -346,23 +340,23 @@ export async function generateSpecs(options, rootDir) {
                 const svcData = await svcResp.json();
 
                 // check if svcData.auth.oauth2.scopes includes any key
-                if(svcData['auth'] && svcData['auth']['oauth2'] && svcData['auth']['oauth2']['scopes']){
-                    if(Object.keys(svcData['auth']['oauth2']['scopes']).length > 0){
-                        if(service.name.includes('firebase') || service.name.includes('toolresults') || service.name.includes('fcm')){
+                if (svcData['auth'] && svcData['auth']['oauth2'] && svcData['auth']['oauth2']['scopes']) {
+                    if (Object.keys(svcData['auth']['oauth2']['scopes']).length > 0) {
+                        if (service.name.includes('firebase') || service.name.includes('toolresults') || service.name.includes('fcm')) {
                             // its a firebase service
-                            if(provider === 'firebase'){
+                            if (provider === 'firebase') {
                                 logger.info(`--------------------------------------`);
                                 logger.info(`processing service ${service.name} ...`);
                                 logger.info(`--------------------------------------`);
-                                await processService(provider, service.name, svcData, servicesDir, debug);                                        
+                                await processService(provider, service.name, svcData, servicesDir, debug);
                             }
                         } else {
-                            if(provider === 'googleapis.com'){
+                            if (provider === 'googleapis.com') {
                                 if (Object.keys(svcData.auth.oauth2.scopes).includes(requiredGCPScope)) {
                                     logger.info(`--------------------------------------`);
                                     logger.info(`processing service ${service.name} ...`);
                                     logger.info(`--------------------------------------`);
-                                    await processService('google', service.name, svcData, servicesDir, debug);                                   
+                                    await processService('google', service.name, svcData, servicesDir, debug);
                                 } else {
                                     logger.info(`service ${service.name} does not have required GCP scope, skipping...`);
                                 }
@@ -375,10 +369,10 @@ export async function generateSpecs(options, rootDir) {
             } catch (err) {
                 // crash program if error
                 logger.error(err);
-                if(service.name != 'poly'){
+                if (service.name != 'poly') {
                     process.exit(1);
                 }
-           }
+            }
         }
 
     } else {
@@ -389,10 +383,7 @@ export async function generateSpecs(options, rootDir) {
         await processService('googleadmin', 'directory', rootData, servicesDir, debug);
     }
 
-    // add provider.yaml file
-    await generateProviderIndex(provider, servicesDir, providerDir, configObj, debug);
-
     const runtime = Math.round(process.uptime() * 100) / 100;
     logger.info(`generate completed in ${runtime}s. ${services.length} files generated.`);
- 
+
 }
